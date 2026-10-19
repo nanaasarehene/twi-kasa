@@ -1,12 +1,14 @@
 """Fine-tune MMS-TTS-aka on the prepared Twi clips (run on a GPU, e.g. Colab).
 
 Training itself is done by Y. Lacombe's finetune-hf-vits (MIT licence). This
-script sets it up and makes one change to it:
+script sets it up and makes two changes to it:
 
   * freezing: the modules named under "freeze" in configs/train.json (by
     default the text encoder and duration predictor, which hold most of
     what the base model knows about Twi pronunciation and timing) are taken
     out of the optimizer, so only the acoustic side adapts to the new voice
+  * plotting: the harness draws its training charts with matplotlib's
+    tostring_rgb(), which matplotlib 3.10 removed; swapped for buffer_rgba()
 
 Afterwards, `--export` turns every saved checkpoint into a normal VitsModel
 folder so each one can be scored and the best one kept.
@@ -39,6 +41,9 @@ FROZEN_OPTIMIZER = """    for name in os.environ.get("KASA_FREEZE", "").split(",
     gen_optimizer = torch.optim.AdamW(
         trainable,"""
 
+OLD_PLOT = "data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)"
+NEW_PLOT = "data = np.asarray(fig.canvas.buffer_rgba())[..., :3].copy()"
+
 
 def run(cmd, cwd=None, env=None):
     print("+", " ".join(map(str, cmd)), flush=True)
@@ -53,11 +58,16 @@ def set_up_harness():
         (HARNESS / "monotonic_align/monotonic_align").mkdir(exist_ok=True)
         run([sys.executable, "setup.py", "build_ext", "--inplace"], cwd=HARNESS / "monotonic_align")
 
-    script = HARNESS / "run_vits_finetuning.py"
-    code = script.read_text()
-    if "KASA_FREEZE" not in code:
-        assert code.count(OPTIMIZER_LINE) == 1, "finetune-hf-vits changed; freezing patch no longer applies"
-        script.write_text(code.replace(OPTIMIZER_LINE, FROZEN_OPTIMIZER))
+    patch(HARNESS / "run_vits_finetuning.py", OPTIMIZER_LINE, FROZEN_OPTIMIZER, count=1)
+    patch(HARNESS / "utils/plot.py", OLD_PLOT, NEW_PLOT, count=2)
+
+
+def patch(path, old, new, count):
+    code = path.read_text()
+    if new in code:
+        return
+    assert code.count(old) == count, f"{path.name} changed upstream; patch no longer applies"
+    path.write_text(code.replace(old, new))
 
 
 def base_model_with_discriminator(path):
