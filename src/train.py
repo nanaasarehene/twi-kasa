@@ -22,6 +22,7 @@ import json
 import os
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -54,8 +55,10 @@ def set_up_harness():
     if not HARNESS.exists():
         run(["git", "clone", HARNESS_URL, HARNESS])
         run(["git", "checkout", "-q", HARNESS_COMMIT], cwd=HARNESS)
-        # build the Cython alignment search, following the harness README
-        (HARNESS / "monotonic_align/monotonic_align").mkdir(exist_ok=True)
+    # build the Cython alignment search for *this* Python, following the harness README
+    built = HARNESS / "monotonic_align/monotonic_align"
+    if not list(built.glob("core" + sysconfig.get_config_var("EXT_SUFFIX"))):
+        built.mkdir(exist_ok=True)
         run([sys.executable, "setup.py", "build_ext", "--inplace"], cwd=HARNESS / "monotonic_align")
 
     patch(HARNESS / "run_vits_finetuning.py", OPTIMIZER_LINE, FROZEN_OPTIMIZER, count=1)
@@ -77,9 +80,51 @@ def base_model_with_discriminator(path):
              "--language_code", "aka", "--pytorch_dump_folder_path", path], cwd=HARNESS)
 
 
+# the two ways PyTorch stores a weight-normed weight w = g * v / |v|
+WEIGHT_NORM_LAYOUTS = [(".weight_g", ".weight_v"),
+                       (".parametrizations.weight.original0", ".parametrizations.weight.original1")]
+
+
+def match_layout(ckpt, target):
+    """Rewrite checkpoint weights into the key layout the target model uses.
+
+    The training harness and transformers' VitsModel don't agree on how weight
+    norm is stored: as plain `weight`, as (weight_g, weight_v), or as
+    parametrizations (original0, original1). Each target key is filled from
+    whichever form the checkpoint has, converting between them as needed.
+    """
+    import torch
+
+    def plain(prefix):
+        if prefix + ".weight" in ckpt:
+            return ckpt[prefix + ".weight"]
+        for g_key, v_key in WEIGHT_NORM_LAYOUTS:
+            if prefix + g_key in ckpt:
+                g, v = ckpt[prefix + g_key], ckpt[prefix + v_key]
+                return torch._weight_norm(v, g, next((i for i, n in enumerate(g.shape) if n != 1), 0))
+        raise KeyError(prefix)
+
+    out = {}
+    for key, like in target.items():
+        if key in ckpt:
+            out[key] = ckpt[key]
+            continue
+        for g_key, v_key in WEIGHT_NORM_LAYOUTS:
+            if key.endswith(g_key):  # target wants g: |w| over every dim except the one g keeps
+                w = plain(key[: -len(g_key)])
+                dim = next((i for i, n in enumerate(like.shape) if n != 1), 0)
+                out[key] = torch.norm_except_dim(w, 2, dim)
+                break
+            if key.endswith(v_key):  # target wants v: w itself is a valid direction
+                out[key] = plain(key[: -len(v_key)])
+                break
+        else:
+            out[key] = plain(key[: -len(".weight")])
+    return out
+
+
 def export_checkpoints(out_dir):
     """checkpoint-N (accelerate state) -> exports/step-N (loadable with VitsModel)."""
-    import torch
     from safetensors.torch import load_file
     from transformers import VitsModel
 
@@ -88,23 +133,13 @@ def export_checkpoints(out_dir):
         if target.exists():
             continue
         model = VitsModel.from_pretrained(out_dir)  # final model: right config and tokenizer
-        # weights in the checkpoint are stored with weight norm still applied
-        model.decoder.apply_weight_norm()
-        for flow in model.flow.flows:
-            torch.nn.utils.weight_norm(flow.conv_pre)
-            torch.nn.utils.weight_norm(flow.conv_post)
-        state = load_file(ckpt / "model.safetensors")
-        missing, unexpected = model.load_state_dict(state, strict=False)
-        assert not missing, f"{ckpt.name}: missing weights {missing[:5]}"
-        model.decoder.remove_weight_norm()
-        for flow in model.flow.flows:
-            torch.nn.utils.remove_weight_norm(flow.conv_pre)
-            torch.nn.utils.remove_weight_norm(flow.conv_post)
+        ckpt_state = load_file(ckpt / "model.safetensors")
+        model.load_state_dict(match_layout(ckpt_state, model.state_dict()))
         model.save_pretrained(target)
         for f in ("tokenizer_config.json", "vocab.json", "special_tokens_map.json", "added_tokens.json"):
             if (out_dir / f).exists():
                 (target / f).write_bytes((out_dir / f).read_bytes())
-        print(f"exported {ckpt.name} -> {target.relative_to(ROOT)}")
+        print(f"exported {ckpt.name} -> {target.relative_to(ROOT) if target.is_relative_to(ROOT) else target}")
 
 
 def main():
@@ -126,7 +161,12 @@ def main():
         harness_cfg = out_dir / "harness_config.json"
         harness_cfg.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
         env = {**os.environ, "KASA_FREEZE": ",".join(freeze)}
-        run(["accelerate", "launch", "run_vits_finetuning.py", harness_cfg], cwd=HARNESS, env=env)
+        import torch
+        # without CUDA, keep accelerate off Apple's MPS backend: it lacks the FFT used for spectrograms
+        device = [] if torch.cuda.is_available() else ["--cpu"]
+        run([sys.executable, "-m", "accelerate.commands.launch", "--num_processes", "1", *device,
+             "--mixed_precision", "fp16" if cfg.get("fp16") else "no",
+             "run_vits_finetuning.py", harness_cfg], cwd=HARNESS, env=env)
 
     sys.path.insert(0, str(HARNESS))
     export_checkpoints(out_dir)

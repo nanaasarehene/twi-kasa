@@ -8,6 +8,8 @@ import sys
 
 REQUIRED = ["torch", "torchaudio", "transformers", "datasets", "accelerate",
             "soundfile", "librosa", "jiwer", "yaml"]
+# the training harness only works below these major versions
+MAX_MAJOR = {"transformers": 4, "datasets": 3}
 
 
 def main() -> int:
@@ -16,7 +18,12 @@ def main() -> int:
     for name in REQUIRED:
         try:
             mod = importlib.import_module(name)
-            print(f"  ok  {name:<13} {getattr(mod, '__version__', '')}")
+            version = getattr(mod, "__version__", "")
+            if name in MAX_MAJOR and int(version.split(".")[0]) > MAX_MAJOR[name]:
+                print(f"  --  {name:<13} {version} is too new (need {MAX_MAJOR[name]}.x)")
+                missing.append(name)
+                continue
+            print(f"  ok  {name:<13} {version}")
         except ImportError as exc:
             print(f"  --  {name:<13} MISSING ({exc})")
             missing.append(name)

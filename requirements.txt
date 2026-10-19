@@ -1,10 +1,12 @@
 # Install torch/torchaudio first, per platform (see README "Setup").
 
-# Model + training
-transformers==4.46.3
-accelerate==1.1.1
-datasets>=2.19,<3.2
-pyarrow>=15,<18     # newer pyarrow needs numpy 2; torch 2.2.2 needs numpy 1
+# Model + training. finetune-hf-vits (Feb 2024) breaks on transformers 5 and on
+# datasets 4 (audio decoding moved to torchcodec), so both are held back.
+transformers==4.49.0
+accelerate>=1.1,<2
+datasets>=3.4,<4
+pyarrow>=15,<18; sys_platform == "darwin" and platform_machine == "x86_64"   # newer needs numpy 2; torch 2.2.2 needs numpy 1
+pyarrow>=18; sys_platform != "darwin" or platform_machine != "x86_64"
 
 # Audio
 soundfile>=0.12
@@ -16,13 +18,17 @@ scipy>=1.11
 
 # Evaluation
 jiwer>=3.0          # character/word error rate
-pandas>=2.0,<3     # pandas 3 stores text as large_string, which datasets 3.1 rejects
+pandas>=2.0,<3      # pandas 3 stores text as large_string, which datasets 3 rejects
 matplotlib>=3.8
 
 # Utilities
 pyyaml>=6.0
 tqdm>=4.66
-huggingface_hub>=0.24
+huggingface_hub>=0.24,<1.0
+
+# Training helpers
+Cython
+tensorboard
 
 # Dev
 pytest>=8.0
