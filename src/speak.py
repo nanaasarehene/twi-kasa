@@ -25,7 +25,8 @@ DEFAULT_MODEL = ROOT / "checkpoints/kasa-twi"
 
 class Speaker:
     def __init__(self, model=DEFAULT_MODEL, seed=0, noise_scale=0.667, speaking_rate=1.0):
-        self.model = VitsModel.from_pretrained(str(model)).eval()
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = VitsModel.from_pretrained(str(model)).eval().to(self.device)
         self.tokenizer = AutoTokenizer.from_pretrained(str(model))
         self.sr = self.model.config.sampling_rate
         # VITS samples random noise when speaking; fixing the seed makes runs repeatable
@@ -37,11 +38,11 @@ class Speaker:
     def say(self, text, pause=0.25):
         pieces = []
         for sentence in split_sentences(clean(text)):
-            ids = self.tokenizer(for_model(sentence), return_tensors="pt")
+            ids = self.tokenizer(for_model(sentence), return_tensors="pt").to(self.device)
             if ids.input_ids.shape[1] < 2:
                 continue
             torch.manual_seed(self.seed)
-            pieces.append(self.model(**ids).waveform[0].numpy())
+            pieces.append(self.model(**ids).waveform[0].cpu().numpy())
             pieces.append(np.zeros(int(pause * self.sr), dtype=np.float32))
         if not pieces:
             raise ValueError(f"nothing speakable in {text!r}")
