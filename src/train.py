@@ -48,6 +48,9 @@ NEW_PLOT = "data = np.asarray(fig.canvas.buffer_rgba())[..., :3].copy()"
 
 def run(cmd, cwd=None, env=None):
     print("+", " ".join(map(str, cmd)), flush=True)
+    # Colab points MPLBACKEND at its notebook plugin, which our separate
+    # environment doesn't have; the harness only needs plain image output
+    env = {**(env or os.environ), "MPLBACKEND": "Agg"}
     subprocess.run(list(map(str, cmd)), cwd=cwd, env=env, check=True)
 
 
