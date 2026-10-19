@@ -149,6 +149,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--config", default=ROOT / "configs/train.json", type=Path)
     p.add_argument("--export", action="store_true", help="only export checkpoints of a finished run")
+    p.add_argument("--cpu", action="store_true", help="allow training without a GPU (smoke tests only)")
     args = p.parse_args()
 
     cfg = json.loads(args.config.read_text())
@@ -158,13 +159,16 @@ def main():
     out_dir = Path(cfg["output_dir"])
 
     if not args.export:
+        import torch
+        if not torch.cuda.is_available() and not args.cpu:
+            sys.exit("No GPU found. On Colab: Runtime > Change runtime type > T4 GPU, then run "
+                     "the notebook again. (Use --cpu only for a short local test.)")
         set_up_harness()
         base_model_with_discriminator(Path(cfg["model_name_or_path"]))
         out_dir.mkdir(parents=True, exist_ok=True)
         harness_cfg = out_dir / "harness_config.json"
         harness_cfg.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
         env = {**os.environ, "KASA_FREEZE": ",".join(freeze)}
-        import torch
         # without CUDA, keep accelerate off Apple's MPS backend: it lacks the FFT used for spectrograms
         device = [] if torch.cuda.is_available() else ["--cpu"]
         run([sys.executable, "-m", "accelerate.commands.launch", "--num_processes", "1", *device,
