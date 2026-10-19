@@ -1,0 +1,20 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Large artefacts: share via Google Drive / Hugging Face, not git
+data/raw/*
+data/processed/*
+checkpoints/*
+outputs/**/*.wav
+runs/
+!**/.gitkeep
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,28 @@
+# Install torch/torchaudio first, per platform (see README "Setup").
+
+# Model + training
+transformers==4.46.3
+accelerate==1.1.1
+datasets>=2.19,<3.2
+pyarrow>=15,<18     # newer pyarrow needs numpy 2; torch 2.2.2 needs numpy 1
+
+# Audio
+soundfile>=0.12
+librosa>=0.10
+# newest llvmlite has no Intel-Mac wheel; pin the last versions that do
+numba==0.60.0; sys_platform == "darwin" and platform_machine == "x86_64"
+llvmlite==0.43.0; sys_platform == "darwin" and platform_machine == "x86_64"
+scipy>=1.11
+
+# Evaluation
+jiwer>=3.0          # character/word error rate
+pandas>=2.0,<3     # pandas 3 stores text as large_string, which datasets 3.1 rejects
+matplotlib>=3.8
+
+# Utilities
+pyyaml>=6.0
+tqdm>=4.66
+huggingface_hub>=0.24
+
+# Dev
+pytest>=8.0

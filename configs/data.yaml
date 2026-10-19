@@ -1,0 +1,22 @@
+dataset:
+  name: WAXAL Twi TTS (University of Ghana, via Google Research)
+  hf_id: google/WaxalNLP
+  hf_config: twi_tts
+  license: CC-BY-4.0
+  variety: twi-asante
+
+paths:
+  raw_dir: data/raw/waxal_twi_tts
+  processed_dir: data/processed
+  unseen_sentences: data/external/unseen_sentences.txt
+
+audio:
+  target_sample_rate: 16000   # MMS-TTS works at 16 kHz
+  max_seconds: 15.0           # longer clips run a T4 out of memory
+  min_seconds: 1.0
+  pad_before: 0.10            # silence kept around each cut, seconds
+  pad_after: 0.20
+
+alignment:
+  chunk_seconds: 20           # aligner sees long recordings in pieces
+  min_score: 0.5              # mean per-character probability from the aligner

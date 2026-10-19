@@ -1,0 +1,48 @@
+{
+  "freeze": ["text_encoder", "duration_predictor"],
+
+  "project_name": "kasa",
+  "model_name_or_path": "runs/mms-aka-with-discriminator",
+  "output_dir": "runs/kasa-twi",
+  "overwrite_output_dir": true,
+  "resume_from_checkpoint": "latest",
+  "push_to_hub": false,
+  "report_to": ["tensorboard"],
+  "logging_steps": 20,
+  "seed": 456,
+
+  "dataset_name": "data/processed",
+  "audio_column_name": "audio",
+  "text_column_name": "model_text",
+  "train_split_name": "train",
+  "eval_split_name": "validation",
+  "max_duration_in_seconds": 15.0,
+  "min_duration_in_seconds": 1.0,
+  "max_tokens_length": 500,
+  "preprocessing_num_workers": 2,
+  "full_generation_sample_text": "Mepa wo kyɛw, ma me nsuo kakra.",
+
+  "do_train": true,
+  "num_train_epochs": 100,
+  "per_device_train_batch_size": 16,
+  "gradient_accumulation_steps": 1,
+  "learning_rate": 2e-5,
+  "adam_beta1": 0.8,
+  "adam_beta2": 0.99,
+  "warmup_ratio": 0.01,
+  "do_step_schedule_per_epoch": true,
+  "fp16": true,
+  "save_steps": 500,
+
+  "do_eval": true,
+  "eval_steps": 500,
+  "per_device_eval_batch_size": 8,
+  "max_eval_samples": 16,
+
+  "weight_disc": 3,
+  "weight_fmaps": 1,
+  "weight_gen": 1,
+  "weight_kl": 1.5,
+  "weight_duration": 1,
+  "weight_mel": 35
+}
